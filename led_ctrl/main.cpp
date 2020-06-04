@@ -9,6 +9,8 @@
 
 #include <gpiod.h>
 
+#include "UnixServerSocket.h"
+
 #include "json.hpp"
 
 #define SOCKET_PATH "/tmp/led_ctrl"
@@ -30,50 +32,30 @@ int main(int argc, char **argv)
         return -1;
     }
 
-    int status, err;
-
-    int sockfd = socket(AF_UNIX, SOCK_STREAM, 0);
-    if (sockfd == -1) {
-        err = errno;
-        std::cerr << "socket() error (errno = " << err << ")\n";
-        return -1;
-    }
-
-    struct sockaddr_un sockaddr = {0};
-    sockaddr.sun_family = AF_UNIX;
-    strcpy(sockaddr.sun_path, SOCKET_PATH);
-    status = bind(sockfd, (struct sockaddr *)&sockaddr, SUN_LEN(&sockaddr));
-    if (status == -1) {
-        err = errno;
-        std::cerr << "bind() error (errno = " << err << ")\n";
-        close(sockfd);
-        return -1;
-    }
-
-    status = listen(sockfd, 5);
-    if (status == -1) {
-        err = errno;
-        std::cerr << "listen() error (errno = " << err << ")\n";
-        close(sockfd);
-        return -1;
-    }
+    UnixServerSocket *passiveSocket = new UnixServerSocket(SOCKET_PATH);
 
     std::cout << "Before accept\n";
-    int client_fd = accept(sockfd, NULL, NULL);
+    Socket *clientSocket = passiveSocket->accept();
 
     while (!AbortProgram) {
         char buf[1024] = {0};
         std::cout << "Before read\n";
-        int bytesRead = read(client_fd, buf, 100);
+        int bytesRead = clientSocket->read(buf, 100);
         std::cout << "After read\n";
         if (bytesRead > 0) {
             buf[bytesRead] = '\0';
             std::cout << buf << std::endl;
+            clientSocket->write(buf, bytesRead);
+        } else if (bytesRead == 0) {
+            // socket disconnected
+            AbortProgram = true;;
         }
     }
 
-    close(client_fd);
-    close(sockfd);
+    clientSocket->close();
+    passiveSocket->close();
+    delete clientSocket;
+    delete passiveSocket;
     unlink("/tmp/led_ctrl");
 
     return 0;
