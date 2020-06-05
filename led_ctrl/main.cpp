@@ -10,6 +10,8 @@
 #include <gpiod.h>
 
 #include "UnixServerSocket.h"
+#include "LEDDriver.h"
+#include "TimespecArithmetic.h"
 
 #include "json.hpp"
 
@@ -26,7 +28,7 @@ void sigint_handler(int signum)
 
 int main(int argc, char **argv)
 {
-    
+    #ifdef COMMENTED_OUT
     if (signal(SIGINT, sigint_handler) == SIG_ERR) {
         std::cout << "Could not register signal handler.\n";
         return -1;
@@ -59,29 +61,25 @@ int main(int argc, char **argv)
     unlink("/tmp/led_ctrl");
 
     return 0;
+    #endif
 
+    const int nLEDs = 7;
+    unsigned int physLedNumbers[nLEDs] = {7, 8, 25, 11, 9, 10, 24};
+    LEDDriver leds(physLedNumbers, nLEDs, "led_ctrl");
+    leds.setMode(LED_MODE_PATTERN);
+    leds.setPattern(LED_PATTERN_BOUNCE);
+    leds.setTickPeriodMS(10);
 
-    struct gpiod_chip *chip;
-	chip = gpiod_chip_open("/dev/gpiochip0");
-	if (!chip)
-		return -1;
+    while (true) {
+        TimespecArithmetic waitTime;
+        waitTime = leds.tick();
+        TimespecArithmetic currentTime;
+        clock_gettime(CLOCK_MONOTONIC_COARSE, currentTime.data());
+        waitTime = waitTime - currentTime;
+        nanosleep(waitTime.data(), NULL);
+    }
 
-	struct gpiod_line *line;
-	line = gpiod_chip_get_line(chip, 7);
-	if (!line) {
-		gpiod_chip_close(chip);
-		return -1;
-	}
-
-	int req = gpiod_line_request_output(line, "gpio_test", 0);
-	if (req) {
-		gpiod_chip_close(chip);
-		return -1;
-	}
-
-    gpiod_line_set_value(line, 1);
-
-    while (true) {}
+    std::cout << "End of main.\n";
 
     return 0;
 }
