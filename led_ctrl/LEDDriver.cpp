@@ -3,6 +3,8 @@
 #include <iostream>
 #include <system_error>
 
+using nlohmann::json;
+
 /**************************** Debugging Functions ****************************/
 
 void printState(std::vector<int> state)
@@ -88,6 +90,61 @@ std::vector<int> initState(enum LEDPattern pattern, int nLEDs)
     return initialState;
 }
 
+std::string getPatternString(LEDPattern pattern)
+{
+    std::string res;
+
+    switch (pattern) {
+    case LED_PATTERN_BOUNCE:
+        res = "bounce";
+        break;
+    case LED_PATTERN_WALK_RIGHT:
+        res = "walkRight";
+        break;
+    case LED_PATTERN_WALK_LEFT:
+        res = "walkLeft";
+        break;
+    case LED_PATTERN_INVERT:
+        res = "invert";
+        break;
+    }
+
+    return res;
+}
+
+LEDDriverMode stringToMode(const std::string &mode)
+{
+    if (mode == "toggle") {
+        return LED_MODE_TOGGLE;
+    } else if (mode == "pattern") {
+        return LED_MODE_PATTERN;
+    } else {
+        // TODO: throw error
+    }
+
+    // never reached
+    return LED_MODE_TOGGLE;
+}
+
+LEDPattern stringToPattern(const std::string &pattern)
+{
+    std::string res;
+    if (pattern == "bounce") {
+        return LED_PATTERN_BOUNCE;
+    } else if (pattern == "walkRight") {
+        return LED_PATTERN_WALK_RIGHT;
+    } else if (pattern == "walkLeft") {
+        return LED_PATTERN_WALK_LEFT;
+    } else if (pattern == "invert") {
+        return LED_PATTERN_INVERT;
+    } else {
+        // TODO: throw error
+    }
+
+    // never reached
+    return LED_PATTERN_BOUNCE;
+}
+
 /**************************** Constructors/Destructor ****************************/
 
 LEDDriver::LEDDriver(unsigned int *lineNumbers, int nLines, const char *consumerName)
@@ -113,26 +170,55 @@ LEDDriver::~LEDDriver()
 
 /**************************** Member Functions ****************************/
 
-/* Sets the LED driver mode. "mode" must be a valid driver mode. */
-void LEDDriver::setMode(enum LEDDriverMode mode)
+json LEDDriver::getState()
 {
-    this->mode = mode;
-    values = initState(pattern, values.size());
+    json state;
+    
+    std::string s;
+    if (mode == LED_MODE_TOGGLE) {
+        state["mode"] = "toggle";
+        state["values"] = values;
+    } else if (mode == LED_MODE_PATTERN) {
+        state["mode"] = "pattern";
+        state["pattern"] = getPatternString(pattern);
+        state["period"] = tickPeriodMS;
+    }
+
+    return state;
+}
+
+/* Sets the LED driver mode. "mode" must be a valid driver mode. */
+json LEDDriver::setMode(const std::string &mode)
+{
+    this->mode = stringToMode(mode);
+    values = initState(this->pattern, values.size());
+
+    return getState();
 }
 
 /* Sets the pattern used in pattern mode. "pattern" must be a valid pattern. */
-void LEDDriver::setPattern(enum LEDPattern pattern)
+json LEDDriver::setPattern(const std::string &pattern)
 {
-    this->pattern = pattern;
-    values = initState(pattern, values.size());
+    this->pattern = stringToPattern(pattern);
+    values = initState(this->pattern, values.size());
+
+    json res;
+    res["pattern"] = getPatternString(this->pattern);
+
+    return res;
 }
 
-void LEDDriver::setTickPeriodMS(unsigned int ms)
+json LEDDriver::setPeriod(unsigned int ms)
 {
     tickPeriodMS = ms;
+
+    json res;
+    res["period"] = tickPeriodMS;
+
+    return res;
 }
 
-int LEDDriver::toggleLed(int ledNumber)
+json LEDDriver::toggleLed(int ledNumber)
 {
     std::vector<int> nextValues = values;
     int value = values[ledNumber];
@@ -144,7 +230,10 @@ int LEDDriver::toggleLed(int ledNumber)
         values = nextValues;
     }
 
-    return status;
+    json res;
+    res["ledValues"] = values;
+
+    return res;
 }
 
 /* Advances the state to the next state. Only works in pattern mode. 

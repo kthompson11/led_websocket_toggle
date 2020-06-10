@@ -1,11 +1,11 @@
 
-CXXFLAGS := -std=c++11 -Wno-psabi
+CXXFLAGS := -std=c++11 -Wno-psabi -pthread
 
 TARGET := led_ctrl
 SRC := $(wildcard *.cpp)
 OBJ := $(SRC:%.cpp=%.o)
 
-LIBS := -lgpiodcxx -lgpiod
+LIBS := -lgpiodcxx -lgpiod -lpthread
 
 all : led_ctrl
 
