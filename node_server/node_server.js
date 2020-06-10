@@ -84,12 +84,12 @@ wss.on('connection', function connection(ws) {
   ws.on('message', function (data) {
     // TODO: sanitize input and/or handle errors
     var request = JSON.parse(data);
-    var reqType = request.requestType;
-    if (reqType === 'getState') {
+    var type = request.type;
+    if (type === 'getState') {
       // append websocket id and pass along request
       request.websocketID = ws.websocketID;
       client.write(JSON.stringify(request));
-    } else if (reqType === 'modify') {
+    } else if (type === 'modify') {
       // pass request along
       client.write(data);
     } else { 
