@@ -56,6 +56,7 @@ using nlohmann::json;
 #define REQUEST_MODE        "setMode"
 #define REQUEST_PATTERN     "setPattern"
 #define REQUEST_PERIODMS    "setPeriod"
+#define REQUEST_TOGGLE      "toggle"
 
 void* handleLEDs(void *_arg)
 {
@@ -100,6 +101,7 @@ void* handleLEDs(void *_arg)
 
             if (bytesRead > 0) {
                 // parse request
+                std::cout << "request: " << buf << std::endl;
                 json request = json::parse(buf);
 
                 // handle request
@@ -119,12 +121,14 @@ void* handleLEDs(void *_arg)
                     response["state"] = leds.setPattern(request["arg"]["pattern"]);
                 } else if (reqType == REQUEST_PERIODMS) {
                     response["state"] = leds.setPeriod(request["arg"]["period"]);
+                } else if (reqType == REQUEST_TOGGLE) {
+                    response["state"] = leds.toggleLed(request["arg"]["iled"]);
                 } else {
                     // invalid request type
+                    std::cerr << "Invalid request\n";
                 }
 
                 // send response
-                std::cout << "Here\n";
                 std::string jsonResponse = response.dump();
                 char *buf = new char[1024];  // TODO: use memory pool
                 strcpy(buf, jsonResponse.c_str());

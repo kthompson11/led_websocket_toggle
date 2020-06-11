@@ -89,11 +89,9 @@ wss.on('connection', function connection(ws) {
       // append websocket id and pass along request
       request.websocketID = ws.websocketID;
       client.write(JSON.stringify(request));
-    } else if (type === 'modify') {
+    } else {
       // pass request along
       client.write(data);
-    } else { 
-      // bad request
     }
   });
 

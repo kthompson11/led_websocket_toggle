@@ -1,0 +1,11 @@
+.ledon {
+    fill: #ff1a1a
+}
+
+.ledoff {
+    fill: #800000
+}
+
+.led {
+    float: left;
+}

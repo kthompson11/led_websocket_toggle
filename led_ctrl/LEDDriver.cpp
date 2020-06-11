@@ -231,7 +231,7 @@ json LEDDriver::toggleLed(int ledNumber)
     }
 
     json res;
-    res["ledValues"] = values;
+    res["values"] = values;
 
     return res;
 }
