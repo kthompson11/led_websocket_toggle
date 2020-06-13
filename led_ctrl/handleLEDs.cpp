@@ -84,7 +84,7 @@ void* handleLEDs(void *_arg)
         clock_gettime(CLOCK_MONOTONIC_COARSE, currentTime.data());
         waitTime = nextTickTime - currentTime;
 
-        if (waitTime.getTimespec().tv_sec < 0) {
+        if ((waitTime.getTimespec().tv_sec < 0) || (waitTime.getTimespec().tv_nsec < 0)) {
             waitTime = zeroTime;
         }
 
@@ -103,6 +103,7 @@ void* handleLEDs(void *_arg)
                 // parse request
                 std::cout << "request: " << buf << std::endl;
                 json request = json::parse(buf);
+                delete[] buf;
 
                 // handle request
                 // TODO: put json work in try...catch block
@@ -117,6 +118,8 @@ void* handleLEDs(void *_arg)
                     response["state"] = leds.getState();
                 } else if (reqType == REQUEST_MODE) {
                     response["state"] = leds.setMode(request["arg"]["mode"]);
+                    nextTickTime = leds.tick();
+                    mode = leds.getMode();
                 } else if (reqType == REQUEST_PATTERN) {
                     response["state"] = leds.setPattern(request["arg"]["pattern"]);
                 } else if (reqType == REQUEST_PERIODMS) {
@@ -135,15 +138,63 @@ void* handleLEDs(void *_arg)
                 write(arg->msgQueueFD, &buf, sizeof(buf));
             }
         } else if (mode == LED_MODE_PATTERN) {
-            // wait for data on job queue or timeout
+            // wait for data on job queue, timeout, or shutdown event
+            int status = ppoll(fds, 2, waitTime.data(), nullptr);
+            if (fds[1].revents & POLLIN) {
+                ShutdownProgram = true;
+                continue;
+            }
 
-            // if not timeout
-            //   read request form job queue
-            //   parse and check requested operation
-            //   create response
-            //   send response
-            // else
-            //   nextTick = tick();
+            if (status == -1) {
+                std::cerr << "ppoll() error\n";
+                throw std::system_error(errno, std::generic_category());
+            } else if (status == 0) {
+                // timeout
+                nextTickTime = leds.tick();
+            } else {
+                // data to process
+                char *buf;
+                int bytesRead = read(arg->jobQueueFD, &buf, sizeof(buf));
+
+                if (bytesRead > 0) {
+                    // parse request
+                    std::cout << "request: " << buf << std::endl;
+                    json request = json::parse(buf);
+                    delete[] buf;
+
+                    // handle request
+                    // TODO: put json work in try...catch block
+                    std::cout << "handleLED: " << request << std::endl;
+                    std::string reqType = request["type"];
+                    json response;
+                    if (request.contains("id")) {
+                        response["id"] = request["id"];
+                    }
+
+                    if (reqType == REQUEST_STATE) {
+                        response["state"] = leds.getState();
+                    } else if (reqType == REQUEST_MODE) {
+                        response["state"] = leds.setMode(request["arg"]["mode"]);
+                        nextTickTime = leds.tick();
+                        mode = leds.getMode();
+                    } else if (reqType == REQUEST_PATTERN) {
+                        response["state"] = leds.setPattern(request["arg"]["pattern"]);
+                    } else if (reqType == REQUEST_PERIODMS) {
+                        response["state"] = leds.setPeriod(request["arg"]["period"]);
+                    } else if (reqType == REQUEST_TOGGLE) {
+                        response["state"] = leds.toggleLed(request["arg"]["iled"]);
+                    } else {
+                        // invalid request type
+                        std::cerr << "Invalid request\n";
+                    }
+
+                    // send response
+                    std::string jsonResponse = response.dump();
+                    char *buf = new char[1024];  // TODO: use memory pool
+                    strcpy(buf, jsonResponse.c_str());
+                    write(arg->msgQueueFD, &buf, sizeof(buf));
+                }
+            }
         } else {
             // invalid mode
             mode = LED_MODE_TOGGLE;

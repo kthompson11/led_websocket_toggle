@@ -48,6 +48,36 @@ std::vector<int> nextStateBounce(std::vector<int> state)
     return nextState;
 }
 
+std::vector<int> nextStateInvert(std::vector<int> state)
+{
+    std::vector<int> nextState(state.size(), 0);
+    for (int i = 0; i < state.size(); ++i) {
+        nextState[i] = (state[i] + 1) % 2;
+    }
+
+    return nextState;
+}
+
+std::vector<int> nextStateWalkRight(std::vector<int> state)
+{
+    std::vector<int> nextState(state.size(), 0);
+    for (int i = 0; i < state.size(); ++i) {
+        nextState[(i + 1) % state.size()] = state[i];
+    }
+
+    return nextState;
+}
+
+std::vector<int> nextStateWalkLeft(std::vector<int> state)
+{
+    std::vector<int> nextState(state.size(), 0);
+    for (int i = 0; i < state.size(); ++i) {
+        nextState[i] = state[(i + 1) % state.size()];
+    }
+
+    return nextState;
+}
+
 std::vector<int> getNextState(enum LEDPattern pattern, std::vector<int> state)
 {
     std::vector<int> nextState;
@@ -57,10 +87,13 @@ std::vector<int> getNextState(enum LEDPattern pattern, std::vector<int> state)
         nextState = nextStateBounce(state);
         break;
     case LED_PATTERN_INVERT:
+        nextState = nextStateInvert(state);
         break;
     case LED_PATTERN_WALK_RIGHT:
+        nextState = nextStateWalkRight(state);
         break;
     case LED_PATTERN_WALK_LEFT:
+        nextState = nextStateWalkLeft(state);
         break;
     default:
         break;
@@ -78,10 +111,19 @@ std::vector<int> initState(enum LEDPattern pattern, int nLEDs)
         initialState[0] = 1;
         break;
     case LED_PATTERN_INVERT:
+        for (int i = 0; i < nLEDs; ++i) {
+            initialState[i] = i % 2;
+        }
         break;
     case LED_PATTERN_WALK_RIGHT:
+        for (int i = 0; i < nLEDs; ++i) {
+            initialState[i] = (i % 3) == 0 ? 1 : 0;
+        }
         break;
     case LED_PATTERN_WALK_LEFT:
+        for (int i = 0; i < nLEDs; ++i) {
+            initialState[i] = (i % 3) == 0 ? 1 : 0;
+        }
         break;
     default:
         break;
@@ -120,6 +162,7 @@ LEDDriverMode stringToMode(const std::string &mode)
         return LED_MODE_PATTERN;
     } else {
         // TODO: throw error
+        std::cerr << "stringToMode(): invalid parameter " << mode << std::endl;
     }
 
     // never reached
@@ -139,6 +182,7 @@ LEDPattern stringToPattern(const std::string &pattern)
         return LED_PATTERN_INVERT;
     } else {
         // TODO: throw error
+        std::cerr << "stringToPattern: invalid parameter " << pattern << std::endl;
     }
 
     // never reached

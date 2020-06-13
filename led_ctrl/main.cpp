@@ -47,8 +47,8 @@ int main(int argc, char **argv)
     }
 
     // create thread for handling the LEDs
-    const int nLEDs = 7;
-    unsigned int physLedNumbers[nLEDs] = {7, 8, 25, 11, 9, 10, 24};
+    const int nLEDs = 9;
+    unsigned int physLedNumbers[nLEDs] = {7, 8, 25, 11, 9, 10, 24, 22, 23};
     HandleLEDsArg ledArg;
     ledArg.shutdownFD = handler.getShutdownFD();
     ledArg.jobQueueFD = jobQueue.getReadFD();

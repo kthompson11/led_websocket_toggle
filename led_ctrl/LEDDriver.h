@@ -32,6 +32,10 @@ public:
     nlohmann::json setPattern(const std::string &pattern);
     nlohmann::json setPeriod(unsigned int ms);
     nlohmann::json toggleLed(int ledNumber);
+    std::vector<int> getValues() { return values; }
+    LEDDriverMode getMode() { return mode; }
+    LEDPattern getPattern() { return pattern; }
+    unsigned int getPeriod() { return tickPeriodMS; }
     TimespecArithmetic tick();
 private:
     struct gpiod_line_bulk lines = {0};
