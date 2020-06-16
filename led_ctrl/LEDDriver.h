@@ -9,6 +9,7 @@
 
 #include "json.hpp"
 #include "TimespecArithmetic.h"
+#include "ManagedGpiod.h"
 
 enum LEDDriverMode {
     LED_MODE_TOGGLE,
@@ -25,7 +26,7 @@ enum LEDPattern {
 class LEDDriver
 {
 public:
-    LEDDriver(unsigned int *lineNumbers, int nLines, const char *consumerName);
+    LEDDriver(std::vector<unsigned int> &lineNumbers, const std::string &consumerName);
     ~LEDDriver();
     nlohmann::json getState();
     nlohmann::json setMode(const std::string &mode);
@@ -36,13 +37,33 @@ public:
     LEDDriverMode getMode() { return mode; }
     LEDPattern getPattern() { return pattern; }
     unsigned int getPeriod() { return tickPeriodMS; }
+    TimespecArithmetic getNextTickTime() { return nextTickTime; }
     TimespecArithmetic tick();
+    static void* threadStart(void *arg);
+
+    // deleted methods
+    LEDDriver(const LEDDriver&) = delete;
+    LEDDriver& operator=(const LEDDriver&) = delete;
+    LEDDriver(const LEDDriver&&) = delete;
+    LEDDriver& operator=(const LEDDriver&&) = delete;
 private:
-    struct gpiod_line_bulk lines = {0};
+    void sendUpdateNotification();
+
     std::vector<int> values;
     enum LEDDriverMode mode = LED_MODE_TOGGLE;
     enum LEDPattern pattern = LED_PATTERN_BOUNCE;
     unsigned int tickPeriodMS = 1000;
+    TimespecArithmetic nextTickTime;
+
+    int updateFD;
+    GPIOD::Chip chip;
+    GPIOD::LineBulk lines;
+    pthread_mutex_t lock = PTHREAD_MUTEX_INITIALIZER;
+};
+
+struct LEDDriverArg {
+    int shutdownFD;
+    LEDDriver &leds;
 };
 
 #endif // LEDDRIVER_H

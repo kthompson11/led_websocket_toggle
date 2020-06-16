@@ -12,7 +12,6 @@
 #include <iostream>
 
 #include "handleIO.h"
-#include "signalHandler.h"
 
 static const int BufSize = 1024;
 
@@ -27,10 +26,12 @@ void* handleIO(void *_arg)
     strcpy(sockaddr.sun_path, arg->socketPath.c_str());
     unlink(arg->socketPath.c_str());
     if (bind(listenerFD, (struct sockaddr *)&sockaddr, SUN_LEN(&sockaddr)) == -1) {
+        std::cerr << "bind() error\n";
         throw std::system_error(errno, std::generic_category());
     }
 
     if (listen(listenerFD, 5) == -1) {
+        std::cerr << "listen() error\n";
         throw std::system_error(errno, std::generic_category());
     }
 
@@ -48,9 +49,11 @@ void* handleIO(void *_arg)
     bool isConnected = false;
     int socketFD;
 
-    while (!ShutdownProgram) {
+    bool shutdownProgram = false;
+    while (!shutdownProgram) {
         if (poll(fds, nfds, -1) == -1)
         {
+            std::cerr << "poll() error\n";
             throw std::system_error(errno, std::generic_category());
         }
 
@@ -72,10 +75,9 @@ void* handleIO(void *_arg)
                         char *buf;
                         read(readFD, &buf, sizeof(buf));
                         write(socketFD, buf, strlen(buf));
-                        std::cout << "Response: " << buf << std::endl;
                         delete[] buf;
                     } else if (readFD == arg->shutdownFD) {
-                        ShutdownProgram = true;
+                        shutdownProgram = true;
                     } else if (readFD == socketFD) {
                         // copy from socket to job queue
                         char *buf = new char[BufSize];
@@ -94,7 +96,6 @@ void* handleIO(void *_arg)
                         } else {
                             // put buffer on job queue
                             write(arg->jobQueueFD, &buf, sizeof(buf));
-                            std::cout << "Received: " << buf << std::endl;
                         }
                     }
                 } else { // not connected
@@ -108,7 +109,7 @@ void* handleIO(void *_arg)
                         isConnected = true;
                         std::cout << "Socket connected\n";
                     } else if (readFD == arg->shutdownFD) {
-                        ShutdownProgram = true;
+                        shutdownProgram = true;
                     } else if (readFD == arg->msgQueueFD) {
                         // discard data
                         char *buf;

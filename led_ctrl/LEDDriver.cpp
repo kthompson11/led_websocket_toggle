@@ -1,9 +1,93 @@
-#include "LEDDriver.h"
+// TODO: reduce scope of lock
+
+#include <sys/eventfd.h>
+#include <unistd.h>
+#include <poll.h>
 
 #include <iostream>
 #include <system_error>
+#include <stdexcept>
+#include <exception>
+
+#include "LEDDriver.h"
+#include "ManagedGpiod.h"
+#include "PthreadLock.h"
 
 using nlohmann::json;
+
+#define GPIOCHIP_PATH "/dev/gpiochip0"
+
+/**************************** Static Thread Start Function ****************************/
+
+void* LEDDriver::threadStart(void *arg)
+{
+    LEDDriver &leds = ((LEDDriverArg *)arg)->leds;
+    int shutdownFD = ((LEDDriverArg *)arg)->shutdownFD;
+
+    TimespecArithmetic nextTickTime;
+    TimespecArithmetic waitTime;
+    TimespecArithmetic currentTime;
+    timespec zeroTS = {0};
+
+    LEDDriverMode mode = leds.getMode();
+
+    // setup ppoll structs
+    const int nfds = 2;
+    const int iShutdownPollFD = 0;
+    const int iUpdatePollFD = 1;
+    pollfd fds[nfds];
+    // setup shutdown fd
+    fds[0].fd = shutdownFD;
+    fds[0].events = POLLIN;
+    // setup updateFD
+    fds[1].fd = leds.updateFD;
+    fds[1].events = POLLIN;
+
+    bool shutdown = false;
+    while (!shutdown) {
+        // wait for event or timeout
+        int status;
+        if (mode == LED_MODE_PATTERN) {
+            nextTickTime = leds.getNextTickTime();
+            if (clock_gettime(CLOCK_MONOTONIC_COARSE, currentTime.data()) == -1) {
+                std::cerr << "clock_gettime() error\n";
+                throw std::system_error(errno, std::generic_category());
+            }
+            waitTime = nextTickTime - currentTime;
+
+            timespec ts = waitTime.getTimespec();
+            if ((ts.tv_sec < 0) || (ts.tv_nsec < 0)) {
+                status = ppoll(fds, nfds, &zeroTS, nullptr);
+            } else {
+                status = ppoll(fds, nfds, waitTime.data(), nullptr);
+            }
+        } else {
+            status = ppoll(fds, nfds, nullptr, nullptr);
+        }
+
+        // check status and perform operation
+        if (status == -1) {
+            std::cerr << "LEDDriver.cpp: ppoll() error\n";
+            throw std::system_error(errno, std::generic_category());
+        } else if (status == 0) {
+            // timeout
+            leds.tick();
+        } else {
+            if (fds[iShutdownPollFD].revents == POLLIN) {
+                // shutdown program
+                shutdown = true;
+            } else {
+                // clear updateFD
+                uint64_t discardBuf;
+                read(fds[iUpdatePollFD].fd, &discardBuf, sizeof(discardBuf));
+                // update state information
+                mode = leds.getMode();
+            }
+        }
+    }
+
+    return 0;
+}
 
 /**************************** Debugging Functions ****************************/
 
@@ -189,36 +273,46 @@ LEDPattern stringToPattern(const std::string &pattern)
     return LED_PATTERN_BOUNCE;
 }
 
-/**************************** Constructors/Destructor ****************************/
-
-LEDDriver::LEDDriver(unsigned int *lineNumbers, int nLines, const char *consumerName)
+TimespecArithmetic getCurrentTime()
 {
-    for (int i = 0; i < nLines; ++i) {
-        values.push_back(0);
+    TimespecArithmetic currentTime;
+    if (clock_gettime(CLOCK_MONOTONIC_COARSE, currentTime.data()) == -1) {
+        std::cerr << "clock_gettime() error\n";
+        throw std::system_error(errno, std::generic_category());
     }
 
-    struct gpiod_chip *chip;
-	chip = gpiod_chip_open("/dev/gpiochip0");
+    return currentTime;
+}
 
-    // store lines in struct gpiod_line_bulk object
-    gpiod_chip_get_lines(chip, lineNumbers, nLines, &lines);
+/**************************** Constructors/Destructor ****************************/
 
-    // request the lines
-    gpiod_line_request_bulk_output(&lines, consumerName, values.data());
+LEDDriver::LEDDriver(std::vector<unsigned int> &lineNumbers, 
+                     const std::string &consumerName)
+                     : chip(GPIOCHIP_PATH), lines(chip, lineNumbers)
+{
+    values = std::vector<int>(lines.getNLines(), 0);
+    lines.requestOutput(consumerName, values);
+
+    updateFD = eventfd(0, 0);
+    if (updateFD == -1) {
+        std::cerr << "Error creating updateFD\n";
+        throw std::system_error(errno, std::generic_category());
+    }
 }
 
 LEDDriver::~LEDDriver()
 {
-    gpiod_line_release_bulk(&lines);
+    pthread_mutex_destroy(&lock);
+    close(updateFD);
 }
 
 /**************************** Member Functions ****************************/
 
 json LEDDriver::getState()
 {
+    PthreadLock locked(&lock);
     json state;
     
-    std::string s;
     if (mode == LED_MODE_TOGGLE) {
         state["mode"] = "toggle";
         state["values"] = values;
@@ -234,8 +328,18 @@ json LEDDriver::getState()
 /* Sets the LED driver mode. "mode" must be a valid driver mode. */
 json LEDDriver::setMode(const std::string &mode)
 {
-    this->mode = stringToMode(mode);
-    values = initState(this->pattern, values.size());
+    {
+        this->mode = stringToMode(mode);
+
+        PthreadLock locked(&lock);
+        if (this->mode == LED_MODE_PATTERN) {
+            TimespecArithmetic currentTime = getCurrentTime();
+            nextTickTime = currentTime + tickPeriodMS;
+        }
+        values = initState(this->pattern, values.size());
+
+        sendUpdateNotification();
+    }
 
     return getState();
 }
@@ -243,6 +347,8 @@ json LEDDriver::setMode(const std::string &mode)
 /* Sets the pattern used in pattern mode. "pattern" must be a valid pattern. */
 json LEDDriver::setPattern(const std::string &pattern)
 {
+    PthreadLock locked(&lock);
+
     this->pattern = stringToPattern(pattern);
     values = initState(this->pattern, values.size());
 
@@ -254,25 +360,29 @@ json LEDDriver::setPattern(const std::string &pattern)
 
 json LEDDriver::setPeriod(unsigned int ms)
 {
+    PthreadLock locked(&lock);
+
     tickPeriodMS = ms;
 
     json res;
     res["period"] = tickPeriodMS;
+
+    sendUpdateNotification();
 
     return res;
 }
 
 json LEDDriver::toggleLed(int ledNumber)
 {
+    PthreadLock locked(&lock);
+
     std::vector<int> nextValues = values;
     int value = values[ledNumber];
     value = (value + 1) % 2;
     nextValues[ledNumber] = value;
 
-    int status = gpiod_line_set_value_bulk(&lines, nextValues.data());
-    if (status == 0) {
-        values = nextValues;
-    }
+    lines.setValues(nextValues);
+    values = nextValues;
 
     json res;
     res["values"] = values;
@@ -284,18 +394,24 @@ json LEDDriver::toggleLed(int ledNumber)
    returns */
 TimespecArithmetic LEDDriver::tick()
 {
-    TimespecArithmetic nextTickTime;
-    if (clock_gettime(CLOCK_MONOTONIC_COARSE, nextTickTime.data()) == -1) {
-        throw std::system_error(errno, std::generic_category());
+    PthreadLock locked(&lock);
+
+    if (mode != LED_MODE_PATTERN) {
+        throw std::runtime_error("tick() called when mode != LED_MODE_PATTERN");
     }
 
-    if (mode == LED_MODE_PATTERN) {
-        values = getNextState(pattern, values);
-        int status = gpiod_line_set_value_bulk(&lines, values.data());
-    }
+    values = getNextState(pattern, values);
+    lines.setValues(values);
 
-    TimespecArithmetic result;
-    result = (nextTickTime + tickPeriodMS);
+    nextTickTime = (getCurrentTime() + tickPeriodMS);
     
-    return result;
+    return nextTickTime;
+}
+
+/* Notifies the LEDDriver thread that the state has been changed.
+   Should only be called while the mutex is locked. */
+void LEDDriver::sendUpdateNotification()
+{
+    uint64_t writeBuf = 1;
+    write(updateFD, &writeBuf, sizeof(writeBuf));
 }

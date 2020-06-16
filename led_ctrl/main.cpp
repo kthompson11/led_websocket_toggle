@@ -1,6 +1,7 @@
 
 #include <iostream>
 #include <system_error>
+#include <vector>
 
 #include <unistd.h>
 #include <sys/types.h>
@@ -14,12 +15,10 @@
 
 #include <gpiod.h>
 
-#include "UnixServerSocket.h"
 #include "LEDDriver.h"
 #include "TimespecArithmetic.h"
 #include "handleIO.h"
 #include "handleLEDs.h"
-#include "signalHandler.h"
 #include "SigintHandler.h"
 #include "Pipe.h"
 
@@ -47,13 +46,11 @@ int main(int argc, char **argv)
     }
 
     // create thread for handling the LEDs
-    const int nLEDs = 9;
-    unsigned int physLedNumbers[nLEDs] = {7, 8, 25, 11, 9, 10, 24, 22, 23};
+    std::vector<unsigned int> physLedNumbers = {7, 8, 25, 11, 9, 10, 24, 22, 23};
     HandleLEDsArg ledArg;
     ledArg.shutdownFD = handler.getShutdownFD();
     ledArg.jobQueueFD = jobQueue.getReadFD();
     ledArg.msgQueueFD = msgQueue.getWriteFD();
-    ledArg.nLEDs = nLEDs;
     ledArg.physLEDNumbers = physLedNumbers;
     pthread_t ledThread;
     if (pthread_create(&ledThread, nullptr, handleLEDs, &ledArg)) {
