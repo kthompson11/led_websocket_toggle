@@ -102,6 +102,7 @@ void* handleLEDs(void *_arg)
 
         if (bytesRead > 0) {
             // parse request
+            std::cout << "unparsed: " << buf << std::endl;
             json request = json::parse(buf);
             delete[] buf;
 
@@ -116,9 +117,7 @@ void* handleLEDs(void *_arg)
             if (reqType == REQUEST_STATE) {
                 response["state"] = leds.getState();
             } else if (reqType == REQUEST_MODE) {
-                std::cout << "setting mode\n";
                 response["state"] = leds.setMode(request["arg"]["mode"]);
-                std::cout << "finished setting mode\n";
             } else if (reqType == REQUEST_PATTERN) {
                 response["state"] = leds.setPattern(request["arg"]["pattern"]);
             } else if (reqType == REQUEST_PERIODMS) {

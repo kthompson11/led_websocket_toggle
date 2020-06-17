@@ -22,5 +22,7 @@ export class WebsocketDataService {
     }
   }
 
+  public getSocket(): WebSocketSubject<any> { return this.socket; }
+
   constructor() { }
 }

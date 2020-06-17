@@ -1,106 +1,49 @@
-import { Component, OnInit } from '@angular/core';
+import { Component, OnInit, OnDestroy } from '@angular/core';
+import { UIRouter } from '@uirouter/angular';
+import { Subscription } from 'rxjs';
 
-import { WebsocketDataService } from '../websocket-data.service';
-import { RangeConvertExponential } from '../range-convert-exponential';
+import { StateService } from '../state.service';
 
 @Component({
   selector: 'app-ledtoggle',
   templateUrl: './ledtoggle.component.html',
   styleUrls: ['./ledtoggle.component.css']
 })
-export class LEDToggleComponent implements OnInit {
-  public values = [];
+export class LEDToggleComponent implements OnInit, OnDestroy {
+  
   public mode: string;
-  public pattern: string;
-  public period: number;
-  private sliderConvert: RangeConvertExponential;
-
-  constructor(private websocketData: WebsocketDataService) {
-    this.sliderConvert = new RangeConvertExponential(0, 100, 10, 2000);
-    console.log('a = ' + this.sliderConvert.a);
-    console.log('b = ' + this.sliderConvert.b);
-  }
-
-  handleData(message) {
-    var json = JSON.parse(message);
-    console.log(json);
-    var state = json.state;
-    if ('values' in state) {
-      this.values = state.values;
-    }
-    
-    if ('mode' in state) {
-      this.mode = state.mode;
-    }
-
-    if ('pattern' in state) {
-      this.pattern = state.pattern;
-    }
-
-    if ('period' in state) {
-      this.period = state.period;
-    }
-  }
+  private modeSub: Subscription;
+  
+  constructor(
+    private stateService: StateService,
+    private router: UIRouter
+  ) {}
 
   ngOnInit(): void {
-    this.websocketData.connect();
-    var request = {type:'getState'};
-    this.websocketData.socket.next(request);
-    this.websocketData.socket.subscribe(
-      msg => msg.text().then(text => this.handleData(text)),
-      err => console.log(err)
-    );
+    this.modeSub = this.stateService.modeSub.subscribe(this.updateMode(), err => console.log(err));
   }
 
-  toggleLed(i: number) {
-    var request = {
-      type: "toggle",
-      arg: {
-        iled: i
-      }
-    };
-    console.log("Toggling LED " + i);
-    this.websocketData.socket.next(request);
+  ngOnDestroy(): void {
+    this.modeSub.unsubscribe();
   }
 
-  setMode(mode: string): void {
-    var request = {
-      type: "setMode",
-      arg: {
-        mode: mode
+  updateMode() {
+    var comp = this;
+    
+    function update(mode: string): void {
+      comp.mode = mode;
+      if (comp.router !== undefined) {
+        comp.router.stateService.go(mode, undefined, {location: 'false'});
+      } else {
+        console.log('uirouter undefined');
       }
+      console.log("mode = " + comp.mode);
     }
 
-    console.log("Setting mode: " + mode);
-    this.websocketData.socket.next(request);
+    return update;
   }
 
-  setPattern(pattern: string): void {
-    var request = {
-      type: "setPattern",
-      arg: {
-        pattern: pattern
-      }
-    }
-
-    console.log("Setting patter: " + pattern);
-    this.websocketData.socket.next(request);
-  }
-
-  setPeriod(sliderValue: string): void {
-    var numValue = Number.parseInt(sliderValue);
-    console.log("numValue = " + numValue);
-    var newPeriod = this.sliderConvert.expConvert(numValue);
-    console.log("newPeriod = " + newPeriod);
-
-    var request = {
-      type: "setPeriod",
-      arg: {
-        period: newPeriod
-      }
-    }
-
-    console.log("Setting period: " + newPeriod);
-    this.websocketData.socket.next(request);
+  setMode(mode: string): void { 
+    this.stateService.setMode(mode); 
   }
 }

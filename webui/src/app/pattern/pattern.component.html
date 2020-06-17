@@ -1,0 +1,12 @@
+<div id="patterns">
+  <button class="pattern_btn" (click)="setPattern('bounce')">Bounce</button>
+  <button class="pattern_btn" (click)="setPattern('walkRight')">Loop Right</button>
+  <button class="pattern_btn" (click)="setPattern('walkLeft')">Loop Left</button>
+  <button class="pattern_btn" (click)="setPattern('invert')">Invert</button>
+</div>
+
+<div><span id="period">Period: {{period}}ms</span></div>
+
+<div>
+  <input id="period_slider" type="range" min="0" max="100" value="50" (change)="setPeriod($event.target.value)">
+</div>

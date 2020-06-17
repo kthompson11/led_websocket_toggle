@@ -1,0 +1,7 @@
+<div>
+  <div class="led" *ngFor="let value of values; index as i">
+    <svg width="80" height="80">
+      <circle [ngClass]="{'ledon': value === 1, 'ledoff': value === 0}" (click)="toggleLed(i)" class="led" cx="40" cy="40" r="35" stroke="black" />
+    </svg>
+  </div>
+</div>
