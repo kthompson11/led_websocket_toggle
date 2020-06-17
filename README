@@ -1,0 +1,15 @@
+LED Websocket Toggle is a test of using websockets to control the state of
+hardware (e.g. LEDs) from a web app. Hardware state is automatically forwarded
+to all connected clients so that all views of the hardware are consistent.
+
+#### led_ctrl ####
+
+Component which controls the hadware according to requests.
+
+#### node_server ####
+
+Simple node server which forwards websocket requests to led_ctrl.
+
+#### webui ####
+
+The web interface to the project.
